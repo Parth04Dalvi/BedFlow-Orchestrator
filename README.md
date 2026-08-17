@@ -52,7 +52,7 @@ During clinical surge events and emergency department bottlenecks, uncoordinated
 
 ---
 
-## 1. System Architecture
+1. System Architecture
 
 ```text
                       [ Emergency Triage / Ward Console (React) ]
