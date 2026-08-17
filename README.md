@@ -27,19 +27,6 @@ During clinical surge events and emergency department bottlenecks, uncoordinated
 
 ---
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/v1/units` | Create a clinical unit / ward |
-| `POST` | `/api/v1/beds` | Register a bed with specific capabilities |
-| `POST` | `/api/v1/patients` | Ingest an ER patient with triage acuity rating |
-| `POST` | `/api/v1/allocations/request` | Submit bed allocation ticket and run matching algorithm |
-| `POST` | `/api/v1/beds/{id}/status` | Mutate bed state (broadcasts via WebSocket) |
-| `WS` | `/ws/live-floor-feed` | Bi-directional WebSocket stream for live floor updates |
-
----
-
 ## Local Setup
 
 > Real-time, event-driven clinical asset coordination engine and dynamic hospital bed allocation system.
@@ -120,3 +107,53 @@ Step 4: Run the FrontendBashcd frontend
 npm install
 npm start
 5. Endpoints ReferenceInterfaceURLDetailsFrontend Consolehttp://localhost:3000Real-time triage intake & interactive floor layoutInteractive Swagger UIhttp://localhost:8000/docsOpenAPI testbed for all REST endpointsWebSocket Feedws://localhost:8000/ws/live-floor-feedBi-directional streaming event channel6. Testing & CI/CD ValidationRun the asynchronous unit and integration test suite inside the backend container:Bashdocker compose exec backend pytest -v tests/
+
+# Clinical Use Cases & Production Scenarios 🏥⚡
+
+This document outlines real-world production environments and failure modes addressed by the **BedFlow-Orchestrator** system architecture.
+
+---
+
+## Primary Scenario: Mass-Casualty Incident (MCI) & Surge Triage
+
+### 1. The Operational Bottleneck
+During unexpected surge events (e.g., regional multi-vehicle collisions, industrial accidents, natural disasters), Level-1 Trauma Centers experience sudden, non-linear admission spikes. 
+
+* **Legacy Failure Mode:** Charge nurses and triage directors coordinate bed availability across departments via manual phone calls, whiteboards, or batched EHR updates.
+* **Impact:** 
+  * High-acuity patients endure dangerous **ED Boarding Times** (holding ICU-bound patients in emergency bays).
+  * **Double-booking collisions:** Multiple ER units attempt to route patients to the same recently vacated trauma bay.
+  * **Hardware Mismatch:** ESI-1 patients requiring mechanical ventilation or dialysis hookups are assigned to generic telemetry beds, forcing costly internal transfers.
+
+---
+
+## 2. BedFlow Orchestration Lifecycle
+
+```text
+[ Incoming Surge: 20 Patients / 10 Mins ]
+                   │
+                   ▼
+       [ Fast Triage Intake ]
+   (ESI Acuity + Hardware Constraints)
+                   │
+                   ▼
+┌───────────────────────────────────────────────┐
+│     Deterministic Multi-Factor Scoring        │
+│  Score = ESI_Weight + (Wait_Time × 3.5) + HW  │
+└──────────────────────┬────────────────────────┘
+                       │
+                       ▼
+┌───────────────────────────────────────────────┐
+│       Pessimistic Concurrency Lock            │
+│    SELECT ... FOR UPDATE SKIP LOCKED          │
+│       (Atomically Claims Bed)                 │
+└──────────────────────┬────────────────────────┘
+                       │
+       ┌───────────────┴───────────────┐
+       ▼                               ▼
+[ Redis Pub/Sub ]              [ Ticket Assigned ]
+       │                               │
+       ▼                               ▼
+[ WebSocket Broadcast ]       [ Patient Route to Ward ]
+ (Console updates < 50ms)
+
